@@ -223,7 +223,7 @@
 
   /* TRANSITION SCREEN */
   #transition-screen {
-    display: none; position: fixed; inset: 0; z-index: 100;
+    display: none; position: fixed; inset: 0; z-index: 150;
     background: var(--bg); flex-direction: column;
     align-items: center; justify-content: center;
     gap: 1.4rem; padding: 2rem; text-align: center;
@@ -243,8 +243,45 @@
 
   #flash-overlay { display: none; position: fixed; inset: 0; z-index: 9999; pointer-events: none; }
 
-  /* SCROLLABLE CONTENT */
-  .scroll-area { width: 100%; overflow-y: auto; }
+  /* VISUALIZAÇÃO SCREEN */
+  #viz-screen {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: #08080a;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 2rem; padding: 2.5rem 1.5rem; text-align: center;
+  }
+  #viz-screen.show { display: flex; }
+  .viz-step-label {
+    font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--pro-text); opacity: 0.6;
+  }
+  .viz-phrase {
+    font-size: 20px; font-weight: 400; color: var(--text-primary);
+    line-height: 1.55; max-width: 300px;
+    opacity: 0; transition: opacity 0.8s ease;
+  }
+  .viz-phrase.visible { opacity: 1; }
+  .viz-orb {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: var(--pro-bg); border: 1.5px solid var(--pro-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; animation: viz-pulse 4s ease-in-out infinite;
+  }
+  @keyframes viz-pulse {
+    0%,100% { transform: scale(1); opacity: 0.7; }
+    50% { transform: scale(1.12); opacity: 1; }
+  }
+  .viz-progress-wrap { width: 200px; }
+  .viz-prog-bg { width: 100%; height: 2px; background: rgba(167,139,250,0.2); border-radius: 2px; overflow: hidden; }
+  .viz-prog-fill { height: 100%; width: 0%; background: var(--pro); transition: width 0.5s linear; }
+  .viz-skip {
+    font-size: 12px; color: var(--text-muted); cursor: pointer;
+    background: none; border: none; padding: 8px 16px;
+    border-radius: var(--radius); border: 0.5px solid var(--border);
+  }
+  .viz-skip:active { color: var(--text-secondary); }
+
+  /* TRANSITION SCREEN atualizada */
 </style>
 </head>
 <body>
@@ -397,18 +434,31 @@
   <div id="precriacao-info" style="display:none;width:100%;flex-direction:column;gap:0.75rem">
     <div class="precriacao-card">
       <div class="pc-title"><i class="ti ti-brain"></i> Modo Pré-criação</div>
-      <div class="pc-sub">Sessão de 7 minutos para levar seu cérebro ao estado Alfa ideal antes de desenhar um mapa mental.</div>
+      <div class="pc-sub">Sessão de 8 minutos para levar seu cérebro ao estado Alfa ideal e visualizar seu objetivo antes de desenhar o mapa mental.</div>
       <div class="pc-steps">
         <div class="pc-step"><span class="pc-step-num">1</span><span><strong>Fase 1 · 2 min</strong> — Desaceleração. Alfa 10 Hz + respiração 5-5 + floresta. Sai do Beta agitado.</span></div>
         <div class="pc-step"><span class="pc-step-num">2</span><span><strong>Fase 2 · 3 min</strong> — Consolidação. Alfa-Theta 8 Hz + respiração 4-4 + oceano. Borda criativa.</span></div>
         <div class="pc-step"><span class="pc-step-num">3</span><span><strong>Fase 3 · 2 min</strong> — Ativação suave. Beta 14 Hz + respiração 4-4. Volta alerta mas calmo.</span></div>
+        <div class="pc-step"><span class="pc-step-num">4</span><span><strong>Visualização · ~1 min</strong> — Frases guiadas para você imaginar o que quer alcançar com detalhes e emoção.</span></div>
       </div>
     </div>
     <div class="card" style="font-size:12px;color:var(--text-secondary);line-height:1.6">
       <div class="card-label">Como usar</div>
-      <p>Use <strong style="color:var(--text-primary)">fones de ouvido estéreo</strong>. Sente-se confortavelmente, feche os olhos e siga o orbe. Ao terminar, a tela de transição avisa para abrir seu mapa mental.</p>
+      <p>Use <strong style="color:var(--text-primary)">fones de ouvido estéreo</strong>. Sente-se confortavelmente, feche os olhos e siga o orbe. Ao terminar as 3 fases, frases de visualização vão guiar você a imaginar seu objetivo. Depois disso, abra seu mapa mental.</p>
     </div>
   </div>
+</div>
+
+
+<!-- VISUALIZAÇÃO SCREEN -->
+<div id="viz-screen">
+  <div class="viz-step-label" id="viz-step-label">visualização guiada</div>
+  <div class="viz-orb">✦</div>
+  <div class="viz-phrase" id="viz-phrase">Feche os olhos e respire fundo.</div>
+  <div class="viz-progress-wrap">
+    <div class="viz-prog-bg"><div class="viz-prog-fill" id="viz-prog"></div></div>
+  </div>
+  <button class="viz-skip" onclick="skipViz()">Pular visualização</button>
 </div>
 
 <!-- TRANSITION SCREEN -->
@@ -628,7 +678,7 @@ function animateOrb(){
     if(ph&&pcPhaseElapsed>=ph.dur){
       const seg=document.getElementById('pseg'+pcPhaseIdx);if(seg)seg.style.width='100%';
       pcPhaseElapsed=0;pcPhaseIdx++;
-      if(pcPhaseIdx>=PC_PHASES.length){stopSession();showTransition();return;}
+      if(pcPhaseIdx>=PC_PHASES.length){stopSession();startViz();return;}
       applyPcPhase(pcPhaseIdx);
     }
     PC_PHASES.forEach((p,i)=>{
@@ -669,6 +719,62 @@ function ease(t){return t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;}
 function fmtTime(s){s=Math.max(0,s);const m=Math.floor(s/60);return m+':'+(s%60).toString().padStart(2,'0');}
 
 let trTimer=null,trCount=30;
+
+// VISUALIZAÇÃO GUIADA
+const VIZ_PHRASES=[
+  {text:'Feche os olhos. Respire fundo e solte devagar.', dur:6000},
+  {text:'Pense no que você quer alcançar. Veja isso acontecendo.', dur:7000},
+  {text:'Sinta a sensação de já ter chegado lá. Como é esse momento?', dur:8000},
+  {text:'Que pessoas estão ao seu redor? O que você vê, ouve, sente?', dur:8000},
+  {text:'Visualize com detalhes. Cores, lugares, emoções.', dur:7000},
+  {text:'Seu cérebro está gravando isso agora. Deixe fluir.', dur:7000},
+  {text:'Traga essa imagem para o centro da sua mente.', dur:6000},
+  {text:'Abra os olhos devagar. Agora desenhe o que você viu.', dur:5000},
+];
+let vizIdx=0,vizTimer=null,vizTotal=0,vizElapsed=0,vizRaf=null,vizStart=0;
+
+function startViz(){
+  vizTotal=VIZ_PHRASES.reduce((s,p)=>s+p.dur,0);
+  vizIdx=0;vizElapsed=0;
+  // start low binaural alfa during viz
+  startBinaurals(10);
+  const scr=document.getElementById('viz-screen');
+  scr.classList.add('show');
+  showVizPhrase(0);
+  vizStart=performance.now();
+  animViz();
+}
+
+function showVizPhrase(idx){
+  if(idx>=VIZ_PHRASES.length){endViz();return;}
+  const ph=document.getElementById('viz-phrase');
+  const lbl=document.getElementById('viz-step-label');
+  ph.classList.remove('visible');
+  lbl.textContent=(idx+1)+' de '+VIZ_PHRASES.length+' · visualização guiada';
+  setTimeout(()=>{
+    ph.textContent=VIZ_PHRASES[idx].text;
+    ph.classList.add('visible');
+  },300);
+  vizTimer=setTimeout(()=>showVizPhrase(idx+1), VIZ_PHRASES[idx].dur);
+}
+
+function animViz(){
+  const elapsed=(performance.now()-vizStart)/1000;
+  const pct=Math.min((elapsed/(vizTotal/1000))*100,100);
+  const el=document.getElementById('viz-prog');
+  if(el)el.style.width=pct.toFixed(1)+'%';
+  if(pct<100)vizRaf=requestAnimationFrame(animViz);
+}
+
+function endViz(){
+  clearTimeout(vizTimer);cancelAnimationFrame(vizRaf);
+  stopBinaurals();
+  document.getElementById('viz-screen').classList.remove('show');
+  showTransition();
+}
+
+function skipViz(){endViz();}
+
 function showTransition(){
   document.getElementById('transition-screen').classList.add('show');
   trCount=30;
