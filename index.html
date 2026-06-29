@@ -484,9 +484,9 @@ let lastRaf=null;
 let pcPhaseIdx=0,pcPhaseElapsed=0;
 
 const PC_PHASES=[
-  {dur:120,freq:10,pattern:[5,5],amb:'forest',label:'Desaceleração'},
-  {dur:180,freq:8,pattern:[4,4],amb:'ocean',label:'Consolidação'},
-  {dur:120,freq:14,pattern:[4,4],amb:'none',label:'Ativação suave'}
+  {dur:120,freq:10,pattern:[5,5,5],amb:'forest',label:'Desaceleração'},
+  {dur:180,freq:8,pattern:[4,4,4],amb:'ocean',label:'Consolidação'},
+  {dur:120,freq:14,pattern:[4,4,4],amb:'none',label:'Ativação suave'}
 ];
 
 const PATTERNS={'4-4':[4,4],'4-7-8':[4,7,8],'5-5':[5,5],'6-2-6':[6,2,6],'4-4-4-4':[4,4,4,4]};
@@ -558,7 +558,9 @@ function initCtx(){
 function startBinaurals(freq){
   stopBinaurals();
   const f=freq||currentFreq;
-  binGain=ctx.createGain();binGain.gain.value=binVolVal;
+  binGain=ctx.createGain();
+  binGain.gain.setValueAtTime(0,ctx.currentTime);
+  binGain.gain.linearRampToValueAtTime(binVolVal, ctx.currentTime+5);
   const merger=ctx.createChannelMerger(2);
   merger.connect(binGain);binGain.connect(ctx.destination);
   const base=200;
@@ -587,7 +589,10 @@ function startAmb(ambOverride){
   stopAmb();
   const amb=ambOverride||currentAmb;
   if(amb==='none')return;
-  ambGain=ctx.createGain();ambGain.gain.value=ambVolVal;ambGain.connect(ctx.destination);
+  ambGain=ctx.createGain();
+  ambGain.gain.setValueAtTime(0,ctx.currentTime);
+  ambGain.gain.linearRampToValueAtTime(ambVolVal, ctx.currentTime+4);
+  ambGain.connect(ctx.destination);
   let node;
   if(amb==='rain')node=makeRain();
   else if(amb==='ocean')node=makeOcean();
