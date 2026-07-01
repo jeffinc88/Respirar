@@ -555,6 +555,53 @@ function initCtx(){
   if(ctx.state==='suspended')ctx.resume();
 }
 
+// AVISOS SONOROS
+function beepBreath(phase){
+  // phase 0=inspira(agudo curto), 1=segura(médio), 2=expira(grave suave), 3=segura2
+  if(!ctx)return;
+  const g=ctx.createGain();g.connect(ctx.destination);
+  const o=ctx.createOscillator();o.connect(g);
+  const freqs=[520,380,260,380];
+  const durs=[0.07,0.06,0.12,0.06];
+  o.type='sine';
+  o.frequency.value=freqs[phase]||440;
+  g.gain.setValueAtTime(0,ctx.currentTime);
+  g.gain.linearRampToValueAtTime(0.18,ctx.currentTime+0.02);
+  g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+durs[phase]||0.08);
+  o.start(ctx.currentTime);
+  o.stop(ctx.currentTime+(durs[phase]||0.08)+0.05);
+}
+
+function beepPhaseChange(){
+  // sino grave duplo para mudança de fase do pré-criação
+  if(!ctx)return;
+  [0,0.22].forEach(delay=>{
+    const g=ctx.createGain();g.connect(ctx.destination);
+    const o=ctx.createOscillator();o.connect(g);
+    o.type='sine';o.frequency.value=320;
+    g.gain.setValueAtTime(0,ctx.currentTime+delay);
+    g.gain.linearRampToValueAtTime(0.22,ctx.currentTime+delay+0.03);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+delay+0.6);
+    o.start(ctx.currentTime+delay);
+    o.stop(ctx.currentTime+delay+0.7);
+  });
+}
+
+function beepVizStart(){
+  // sino cristalino triplo para início da visualização
+  if(!ctx)return;
+  [0,0.3,0.6].forEach((delay,i)=>{
+    const g=ctx.createGain();g.connect(ctx.destination);
+    const o=ctx.createOscillator();o.connect(g);
+    o.type='sine';o.frequency.value=[528,660,792][i];
+    g.gain.setValueAtTime(0,ctx.currentTime+delay);
+    g.gain.linearRampToValueAtTime(0.15,ctx.currentTime+delay+0.04);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+delay+0.8);
+    o.start(ctx.currentTime+delay);
+    o.stop(ctx.currentTime+delay+0.9);
+  });
+}
+
 function startBinaurals(freq){
   stopBinaurals();
   const f=freq||currentFreq;
@@ -684,6 +731,7 @@ function animateOrb(){
       const seg=document.getElementById('pseg'+pcPhaseIdx);if(seg)seg.style.width='100%';
       pcPhaseElapsed=0;pcPhaseIdx++;
       if(pcPhaseIdx>=PC_PHASES.length){stopSession();startViz();return;}
+      beepPhaseChange();
       applyPcPhase(pcPhaseIdx);
     }
     PC_PHASES.forEach((p,i)=>{
@@ -716,7 +764,11 @@ function animateOrb(){
   document.getElementById('prog-elapsed').textContent=fmtTime(Math.floor(sessionElapsed));
   document.getElementById('prog-remain').textContent=fmtTime(Math.max(0,Math.ceil(totalDur-sessionElapsed)));
 
-  if(breathTime>=phaseDur){breathTime=0;breathPhase=(breathPhase+1)%currentPattern.length;}
+  if(breathTime>=phaseDur){
+    breathTime=0;
+    breathPhase=(breathPhase+1)%currentPattern.length;
+    beepBreath(breathPhase);
+  }
   animFrame=requestAnimationFrame(animateOrb);
 }
 
@@ -727,14 +779,14 @@ let trTimer=null,trCount=30;
 
 // VISUALIZAÇÃO GUIADA
 const VIZ_PHRASES=[
-  {text:'Feche os olhos. Respire fundo e solte devagar.', dur:6000},
-  {text:'Pense no que você quer alcançar. Veja isso acontecendo.', dur:7000},
-  {text:'Sinta a sensação de já ter chegado lá. Como é esse momento?', dur:8000},
-  {text:'Que pessoas estão ao seu redor? O que você vê, ouve, sente?', dur:8000},
-  {text:'Visualize com detalhes. Cores, lugares, emoções.', dur:7000},
-  {text:'Seu cérebro está gravando isso agora. Deixe fluir.', dur:7000},
-  {text:'Traga essa imagem para o centro da sua mente.', dur:6000},
-  {text:'Abra os olhos devagar. Agora desenhe o que você viu.', dur:5000},
+  {text:'Feche os olhos. Respire fundo e solte devagar.', dur:10000},
+  {text:'Pense no que você quer alcançar. Veja isso acontecendo na sua mente.', dur:14000},
+  {text:'Sinta a sensação de já ter chegado lá. Como é esse momento para você?', dur:14000},
+  {text:'Que pessoas estão ao seu redor? O que você vê, ouve, sente?', dur:14000},
+  {text:'Visualize com detalhes. Cores, lugares, cheiros, emoções.', dur:13000},
+  {text:'Seu cérebro está gravando isso agora. Não force — deixe fluir.', dur:13000},
+  {text:'Traga essa imagem para o centro da sua mente. Segure ela por um momento.', dur:14000},
+  {text:'Abra os olhos devagar. Agora desenhe o que você viu.', dur:10000},
 ];
 let vizIdx=0,vizTimer=null,vizTotal=0,vizElapsed=0,vizRaf=null,vizStart=0;
 
@@ -743,6 +795,7 @@ function startViz(){
   vizIdx=0;vizElapsed=0;
   // start low binaural alfa during viz
   startBinaurals(10);
+  beepVizStart();
   const scr=document.getElementById('viz-screen');
   scr.classList.add('show');
   showVizPhrase(0);
