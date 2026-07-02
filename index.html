@@ -562,11 +562,11 @@ function beepBreath(phase){
   const g=ctx.createGain();g.connect(ctx.destination);
   const o=ctx.createOscillator();o.connect(g);
   const freqs=[520,380,260,380];
-  const durs=[0.07,0.06,0.12,0.06];
+  const durs=[0.09,0.08,0.15,0.08];
   o.type='sine';
   o.frequency.value=freqs[phase]||440;
   g.gain.setValueAtTime(0,ctx.currentTime);
-  g.gain.linearRampToValueAtTime(0.18,ctx.currentTime+0.02);
+  g.gain.linearRampToValueAtTime(0.38,ctx.currentTime+0.02);
   g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+durs[phase]||0.08);
   o.start(ctx.currentTime);
   o.stop(ctx.currentTime+(durs[phase]||0.08)+0.05);
@@ -580,7 +580,7 @@ function beepPhaseChange(){
     const o=ctx.createOscillator();o.connect(g);
     o.type='sine';o.frequency.value=320;
     g.gain.setValueAtTime(0,ctx.currentTime+delay);
-    g.gain.linearRampToValueAtTime(0.22,ctx.currentTime+delay+0.03);
+    g.gain.linearRampToValueAtTime(0.38,ctx.currentTime+delay+0.03);
     g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+delay+0.6);
     o.start(ctx.currentTime+delay);
     o.stop(ctx.currentTime+delay+0.7);
@@ -595,7 +595,7 @@ function beepVizStart(){
     const o=ctx.createOscillator();o.connect(g);
     o.type='sine';o.frequency.value=[528,660,792][i];
     g.gain.setValueAtTime(0,ctx.currentTime+delay);
-    g.gain.linearRampToValueAtTime(0.15,ctx.currentTime+delay+0.04);
+    g.gain.linearRampToValueAtTime(0.32,ctx.currentTime+delay+0.04);
     g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+delay+0.8);
     o.start(ctx.currentTime+delay);
     o.stop(ctx.currentTime+delay+0.9);
@@ -622,10 +622,26 @@ function stopBinaurals(){try{binL&&binL.stop();binR&&binR.stop();}catch(e){}binL
 function restartBinaurals(freq){stopBinaurals();startBinaurals(freq);}
 
 function makeNoise(color){
-  const buf=ctx.createBuffer(1,ctx.sampleRate*3,ctx.sampleRate);
+  const sRate=ctx.sampleRate;
+  const dur=12;
+  const buf=ctx.createBuffer(1,sRate*dur,sRate);
   const d=buf.getChannelData(0);
-  if(color==='white'){for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1);}
-  else{let b=0;for(let i=0;i<d.length;i++){const w=Math.random()*2-1;b=0.99*b+0.01*w;d[i]=b*20;}}
+  if(color==='white'){
+    for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1);
+  } else {
+    let b=0;
+    for(let i=0;i<d.length;i++){
+      const w=Math.random()*2-1;
+      b=0.99*b+0.01*w;
+      d[i]=b*20;
+    }
+  }
+  const fade=Math.floor(sRate*0.5);
+  for(let i=0;i<fade;i++){
+    const t=i/fade;
+    d[i]*=t;
+    d[d.length-1-i]*=t;
+  }
   const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;return src;
 }
 function makeRain(){const src=makeNoise('white');const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=1200;const hp=ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=200;src.connect(hp);hp.connect(lp);return{src,out:lp};}
