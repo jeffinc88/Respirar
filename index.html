@@ -337,6 +337,7 @@
     <button class="tab" onclick="showTab('breath')">Respiração</button>
     <button class="tab" onclick="showTab('ambient')">Ambiente</button>
     <button class="tab" onclick="showTab('guide')">Guia</button>
+    <button class="tab" onclick="showTab('avisos')">Avisos</button>
   </div>
 
   <div class="panel active" id="tab-freq">
@@ -430,6 +431,24 @@
     </div>
   </div>
 
+  <div class="panel" id="tab-avisos">
+    <div class="card">
+      <div class="card-label">Aviso de respiração</div>
+      <div class="toggle-row">
+        <div class="tog-info"><strong>Bip sonoro</strong><small>Tom suave a cada troca de fase</small></div>
+        <label class="toggle"><input type="checkbox" id="toggle-bip" checked onchange="useBip=this.checked"><span class="slider-tog"></span></label>
+      </div>
+      <div class="toggle-row" style="margin-top:6px">
+        <div class="tog-info"><strong>Vibração</strong><small>Leve pulso háptico · só Android</small></div>
+        <label class="toggle"><input type="checkbox" id="toggle-vib" checked onchange="useVib=this.checked"><span class="slider-tog"></span></label>
+      </div>
+    </div>
+    <div class="card" style="font-size:12px;color:var(--text-secondary);line-height:1.6">
+      <div class="card-label">Observação</div>
+      <p>A vibração funciona apenas em Android. No iPhone o navegador não permite acesso ao motor háptico — use o bip sonoro ou siga o orbe visual.</p>
+    </div>
+  </div>
+
   <!-- PRÉ-CRIAÇÃO INFO -->
   <div id="precriacao-info" style="display:none;width:100%;flex-direction:column;gap:0.75rem">
     <div class="precriacao-card">
@@ -474,6 +493,7 @@
 
 <script>
 let ctx=null,running=false,paused=false,animFrame=null,flashInterval=null;
+let useBip=true,useVib=true;
 let binL=null,binR=null,binGain=null,ambGain=null,ambNodes=[];
 let breathPhase=0,breathTime=0;
 let sessionDur=5*60,sessionElapsed=0;
@@ -527,7 +547,7 @@ function setMode(m){
 
 function showTab(id){
   if(currentMode!=='livre')return;
-  const ids=['freq','breath','ambient','guide'];
+  const ids=['freq','breath','ambient','guide','avisos'];
   document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',ids[i]===id));
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='tab-'+id));
 }
@@ -556,20 +576,36 @@ function initCtx(){
 }
 
 // AVISOS SONOROS
+function vibrate(pattern){
+  if(navigator.vibrate)navigator.vibrate(pattern);
+}
+
 function beepBreath(phase){
-  // phase 0=inspira(agudo curto), 1=segura(médio), 2=expira(grave suave), 3=segura2
-  if(!ctx)return;
-  const g=ctx.createGain();g.connect(ctx.destination);
-  const o=ctx.createOscillator();o.connect(g);
-  const freqs=[520,380,260,380];
-  const durs=[0.09,0.08,0.15,0.08];
-  o.type='sine';
-  o.frequency.value=freqs[phase]||440;
-  g.gain.setValueAtTime(0,ctx.currentTime);
-  g.gain.linearRampToValueAtTime(0.38,ctx.currentTime+0.02);
-  g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+durs[phase]||0.08);
-  o.start(ctx.currentTime);
-  o.stop(ctx.currentTime+(durs[phase]||0.08)+0.05);
+  // Vibração leve (Android)
+  if(useVib){
+    const vibPat=[[25],[12],[45],[12]];
+    vibrate(vibPat[phase%4]||[20]);
+  }
+  // Bip tipo bowl tibetano suave
+  if(useBip&&ctx){
+    const freqs=[432,360,288,360]; // inspira, segura, expira, segura2
+    const f=freqs[phase%4]||360;
+    const now=ctx.currentTime;
+    // Fundamental
+    const g1=ctx.createGain();g1.connect(ctx.destination);
+    const o1=ctx.createOscillator();o1.type='sine';o1.frequency.value=f;o1.connect(g1);
+    g1.gain.setValueAtTime(0,now);
+    g1.gain.linearRampToValueAtTime(0.28,now+0.015);
+    g1.gain.exponentialRampToValueAtTime(0.001,now+0.55);
+    o1.start(now);o1.stop(now+0.6);
+    // Harmônico suave (oitava acima, bem mais baixo)
+    const g2=ctx.createGain();g2.connect(ctx.destination);
+    const o2=ctx.createOscillator();o2.type='sine';o2.frequency.value=f*2;o2.connect(g2);
+    g2.gain.setValueAtTime(0,now);
+    g2.gain.linearRampToValueAtTime(0.08,now+0.015);
+    g2.gain.exponentialRampToValueAtTime(0.001,now+0.35);
+    o2.start(now);o2.stop(now+0.4);
+  }
 }
 
 function beepPhaseChange(){
@@ -619,7 +655,22 @@ function startBinaurals(freq){
   binL.start();binR.start();
 }
 function stopBinaurals(){try{binL&&binL.stop();binR&&binR.stop();}catch(e){}binL=null;binR=null;}
-function restartBinaurals(freq){stopBinaurals();startBinaurals(freq);}
+function restartBinaurals(freq){
+  // Fade-out suave do binaural atual antes de parar — elimina chiado na troca de fase
+  if(binGain){
+    const t=ctx.currentTime;
+    binGain.gain.cancelScheduledValues(t);
+    binGain.gain.setValueAtTime(binGain.gain.value,t);
+    binGain.gain.linearRampToValueAtTime(0,t+0.8);
+    const oldL=binL,oldR=binR,oldG=binGain;
+    setTimeout(()=>{
+      try{oldL&&oldL.stop();oldR&&oldR.stop();}catch(e){}
+      try{oldG.disconnect();}catch(e){}
+    },900);
+    binL=null;binR=null;binGain=null;
+  }
+  setTimeout(()=>startBinaurals(freq),850);
+}
 
 function makeNoise(color){
   const sRate=ctx.sampleRate;
@@ -645,7 +696,28 @@ function makeNoise(color){
   const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;return src;
 }
 function makeRain(){const src=makeNoise('white');const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=1200;const hp=ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=200;src.connect(hp);hp.connect(lp);return{src,out:lp};}
-function makeOcean(){const src=makeNoise('brown');const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=600;lp.Q.value=1.5;const lfo=ctx.createOscillator();lfo.frequency.value=0.12;lfo.type='sine';const lfoG=ctx.createGain();lfoG.gain.value=0.5;lfo.connect(lfoG);const g=ctx.createGain();g.gain.value=0.5;lfoG.connect(g.gain);src.connect(lp);lp.connect(g);lfo.start();return{src,extra:[lfo],out:g};}
+function makeOcean(){
+  // Dois layers de ruído marrom com filtros diferentes — sem LFO ressonante
+  const src1=makeNoise('brown');
+  const src2=makeNoise('brown');
+  // Layer 1: grave, corpo do oceano
+  const lp1=ctx.createBiquadFilter();lp1.type='lowpass';lp1.frequency.value=500;lp1.Q.value=0.5;
+  // Layer 2: médio-agudo, espuma da onda
+  const lp2=ctx.createBiquadFilter();lp2.type='lowpass';lp2.frequency.value=900;lp2.Q.value=0.3;
+  const hp2=ctx.createBiquadFilter();hp2.type='highpass';hp2.frequency.value=350;hp2.Q.value=0.3;
+  // Ganho de mistura
+  const g1=ctx.createGain();g1.gain.value=0.6;
+  const g2=ctx.createGain();g2.gain.value=0.3;
+  const mix=ctx.createGain();mix.gain.value=1.0;
+  src1.connect(lp1);lp1.connect(g1);g1.connect(mix);
+  src2.connect(lp2);lp2.connect(hp2);hp2.connect(g2);g2.connect(mix);
+  // LFO de ganho muito lento e suave (0.04 Hz = onda a cada 25s) sem ressonância
+  const lfo=ctx.createOscillator();lfo.type='sine';lfo.frequency.value=0.04;
+  const lfoG=ctx.createGain();lfoG.gain.value=0.12;
+  lfo.connect(lfoG);lfoG.connect(mix.gain);
+  lfo.start();
+  return{src:src1,extra:[src2,lfo],out:mix};
+}
 function makeForest(){const src=makeNoise('white');const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=800;bp.Q.value=0.3;const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2000;src.connect(bp);bp.connect(lp);return{src,out:lp};}
 
 function startAmb(ambOverride){
@@ -697,7 +769,23 @@ function startSession(){
 function applyPcPhase(idx){
   const ph=PC_PHASES[idx];if(!ph)return;
   currentPattern=ph.pattern;breathPhase=0;breathTime=0;
-  restartBinaurals(ph.freq);stopAmb();if(ph.amb!=='none')startAmb(ph.amb);
+  // Fade-out suave do ambiente atual antes de trocar
+  if(ambGain&&ambNodes.length){
+    const t=ctx.currentTime;
+    ambGain.gain.cancelScheduledValues(t);
+    ambGain.gain.setValueAtTime(ambGain.gain.value,t);
+    ambGain.gain.linearRampToValueAtTime(0,t+0.8);
+    const oldNodes=[...ambNodes];const oldG=ambGain;
+    ambNodes=[];ambGain=null;
+    setTimeout(()=>{
+      oldNodes.forEach(n=>{try{n.stop();}catch(e){}});
+      try{oldG.disconnect();}catch(e){}
+      if(ph.amb!=='none')startAmb(ph.amb);
+    },900);
+  } else {
+    stopAmb();if(ph.amb!=='none')startAmb(ph.amb);
+  }
+  restartBinaurals(ph.freq);
   document.getElementById('status').textContent='Fase '+(idx+1)+'/3 · '+ph.label+' · '+ph.freq+' Hz';
 }
 
