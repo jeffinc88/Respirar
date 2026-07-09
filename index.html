@@ -720,22 +720,70 @@ function makeOcean(){
 }
 function makeForest(){const src=makeNoise('white');const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=800;bp.Q.value=0.3;const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=2000;src.connect(bp);bp.connect(lp);return{src,out:lp};}
 
-function startAmb(ambOverride){
+// Cache de buffers de áudio decodificados
+const audioBufferCache={};
+
+async function loadAudioBuffer(url){
+  if(audioBufferCache[url])return audioBufferCache[url];
+  try{
+    const resp=await fetch(url);
+    if(!resp.ok)throw new Error('HTTP '+resp.status);
+    const arrBuf=await resp.arrayBuffer();
+    const decoded=await ctx.decodeAudioData(arrBuf);
+    audioBufferCache[url]=decoded;
+    return decoded;
+  }catch(e){
+    console.warn('Falha ao carregar áudio:',url,e);
+    return null;
+  }
+}
+
+function startAmbFromBuffer(buffer){
+  const src=ctx.createBufferSource();
+  src.buffer=buffer;src.loop=true;
+  return{src,out:src};
+}
+
+async function startAmb(ambOverride){
   stopAmb();
   const amb=ambOverride||currentAmb;
   if(amb==='none')return;
   ambGain=ctx.createGain();
   ambGain.gain.setValueAtTime(0,ctx.currentTime);
-  ambGain.gain.linearRampToValueAtTime(ambVolVal, ctx.currentTime+4);
+  ambGain.gain.linearRampToValueAtTime(ambVolVal,ctx.currentTime+4);
   ambGain.connect(ctx.destination);
-  let node;
-  if(amb==='rain')node=makeRain();
-  else if(amb==='ocean')node=makeOcean();
-  else if(amb==='forest')node=makeForest();
-  else if(amb==='wind'){const src=makeNoise('brown');const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=300;bp.Q.value=0.4;src.connect(bp);node={src,out:bp};}
-  else if(amb==='fire'){const src=makeNoise('brown');const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=400;src.connect(lp);node={src,out:lp};}
-  else{const src=makeNoise(amb==='brown'?'brown':'white');node={src,out:src};}
-  node.out.connect(ambGain);node.src.start();
+
+  // URLs dos arquivos MP3 no repositório (mesmo diretório do index.html)
+  const realAudio={
+    forest:'sounds/forest.mp3',
+    ocean:'sounds/ocean.mp3',
+    rain:'sounds/rain.mp3',
+    fire:'sounds/fire.mp3',
+    wind:'sounds/wind.mp3',
+  };
+
+  let node=null;
+  if(realAudio[amb]){
+    const buffer=await loadAudioBuffer(realAudio[amb]);
+    if(buffer){
+      node=startAmbFromBuffer(buffer);
+    }
+  }
+
+  // Fallback sintético se MP3 não existir
+  if(!node){
+    if(amb==='rain')node=makeRain();
+    else if(amb==='ocean')node=makeOcean();
+    else if(amb==='forest')node=makeForest();
+    else if(amb==='wind'){const src=makeNoise('brown');const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=300;bp.Q.value=0.4;src.connect(bp);node={src,out:bp};}
+    else if(amb==='fire'){const src=makeNoise('brown');const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=400;src.connect(lp);node={src,out:lp};}
+    else if(amb==='white'){const src=makeNoise('white');node={src,out:src};}
+    else if(amb==='brown'){const src=makeNoise('brown');node={src,out:src};}
+  }
+
+  if(!node)return;
+  node.out.connect(ambGain);
+  node.src.start();
   if(node.extra)node.extra.forEach(n=>{try{n.start();}catch(e){}});
   ambNodes=[node.src,...(node.extra||[])];
 }
@@ -907,6 +955,33 @@ function startViz(){
   animViz();
 }
 
+const synth=window.speechSynthesis;
+let ptVoice=null;
+
+function loadVoice(){
+  const voices=synth.getVoices();
+  ptVoice=voices.find(v=>v.lang.startsWith('pt')&&v.name.toLowerCase().includes('female'))
+        ||voices.find(v=>v.lang.startsWith('pt'))
+        ||voices.find(v=>v.lang==='pt-BR')
+        ||null;
+}
+if(synth.onvoiceschanged!==undefined)synth.onvoiceschanged=loadVoice;
+loadVoice();
+
+function speakPhrase(text, onEnd){
+  if(!synth||!text){if(onEnd)onEnd();return;}
+  synth.cancel();
+  const utt=new SpeechSynthesisUtterance(text);
+  utt.lang='pt-BR';
+  utt.rate=0.82;
+  utt.pitch=0.95;
+  utt.volume=0.9;
+  if(ptVoice)utt.voice=ptVoice;
+  utt.onend=()=>{if(onEnd)onEnd();};
+  utt.onerror=()=>{if(onEnd)onEnd();};
+  synth.speak(utt);
+}
+
 function showVizPhrase(idx){
   if(idx>=VIZ_PHRASES.length){endViz();return;}
   const ph=document.getElementById('viz-phrase');
@@ -916,6 +991,8 @@ function showVizPhrase(idx){
   setTimeout(()=>{
     ph.textContent=VIZ_PHRASES[idx].text;
     ph.classList.add('visible');
+    // Fala a frase em voz alta
+    speakPhrase(VIZ_PHRASES[idx].text, null);
   },300);
   vizTimer=setTimeout(()=>showVizPhrase(idx+1), VIZ_PHRASES[idx].dur);
 }
@@ -930,6 +1007,7 @@ function animViz(){
 
 function endViz(){
   clearTimeout(vizTimer);cancelAnimationFrame(vizRaf);
+  if(synth)synth.cancel();
   stopBinaurals();
   document.getElementById('viz-screen').classList.remove('show');
   showTransition();
