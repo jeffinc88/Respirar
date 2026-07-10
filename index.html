@@ -221,6 +221,33 @@
 
   .warn { font-size: 11px; color: var(--warning-text); display: flex; align-items: flex-start; gap: 5px; line-height: 1.4; }
 
+  /* SILENCE SCREEN */
+  #silence-screen {
+    display: none; position: fixed; inset: 0; z-index: 180;
+    background: #08080a;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 1.8rem; padding: 2.5rem 1.5rem; text-align: center;
+  }
+  #silence-screen.show { display: flex; }
+  .sil-title { font-size: 20px; font-weight: 500; color: var(--text-primary); line-height: 1.5; }
+  .sil-sub { font-size: 13px; color: var(--text-muted); line-height: 1.6; max-width: 280px; }
+  .sil-clock {
+    font-size: 52px; font-weight: 300; color: var(--pro-text);
+    letter-spacing: 0.05em; font-variant-numeric: tabular-nums;
+  }
+  .sil-label { font-size: 10px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+  .sil-orb {
+    width: 70px; height: 70px; border-radius: 50%;
+    background: var(--pro-bg); border: 1px solid var(--pro-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; animation: viz-pulse 6s ease-in-out infinite;
+  }
+  .sil-skip {
+    font-size: 12px; color: var(--text-muted); cursor: pointer;
+    background: none; border: 0.5px solid var(--border);
+    padding: 8px 18px; border-radius: var(--radius);
+  }
+
   /* TRANSITION SCREEN */
   #transition-screen {
     display: none; position: fixed; inset: 0; z-index: 150;
@@ -480,6 +507,17 @@
   <button class="viz-skip" onclick="skipViz()">Pular visualização</button>
 </div>
 
+<!-- SILENCE SCREEN -->
+<div id="silence-screen">
+  <div class="sil-label">mapa mental interno</div>
+  <div class="sil-orb">✦</div>
+  <div class="sil-title">Construa seu mapa<br>com os olhos fechados</div>
+  <div class="sil-sub">O som continua. Deixe as imagens se organizarem naturalmente na sua mente.</div>
+  <div class="sil-clock" id="silence-countdown">3:00</div>
+  <div class="sil-label">restantes</div>
+  <button class="sil-skip" onclick="skipSilence()">Concluir agora</button>
+</div>
+
 <!-- TRANSITION SCREEN -->
 <div id="transition-screen">
   <div class="tr-emoji">🧠</div>
@@ -493,6 +531,7 @@
 
 <script>
 let ctx=null,running=false,paused=false,animFrame=null,flashInterval=null;
+let wakeLock=null;
 let useBip=true,useVib=true;
 let binL=null,binR=null,binGain=null,ambGain=null,ambNodes=[];
 let breathPhase=0,breathTime=0;
@@ -574,6 +613,25 @@ function initCtx(){
   if(!ctx)ctx=new(window.AudioContext||window.webkitAudioContext)();
   if(ctx.state==='suspended')ctx.resume();
 }
+
+async function requestWakeLock(){
+  if(!('wakeLock' in navigator))return;
+  try{
+    wakeLock=await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release',()=>{wakeLock=null;});
+  }catch(e){console.warn('Wake Lock não disponível:',e);}
+}
+
+async function releaseWakeLock(){
+  if(wakeLock){try{await wakeLock.release();}catch(e){}wakeLock=null;}
+}
+
+// Reacquire wake lock quando app volta ao foco (ex: usuário sai e volta)
+document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState==='visible'&&running&&!paused){
+    await requestWakeLock();
+  }
+});
 
 // AVISOS SONOROS
 function vibrate(pattern){
@@ -792,7 +850,7 @@ function stopAmb(){ambNodes.forEach(n=>{try{n.stop();}catch(e){}});ambNodes=[];}
 function toggleSession(){if(running)stopSession();else startSession();}
 
 function startSession(){
-  initCtx();running=true;paused=false;
+  initCtx();requestWakeLock();running=true;paused=false;
   breathPhase=0;breathTime=0;sessionElapsed=0;lastRaf=null;
   if(currentMode==='precriacao'){
     sessionDur=PC_PHASES.reduce((s,p)=>s+p.dur,0);
@@ -839,6 +897,7 @@ function applyPcPhase(idx){
 
 function stopSession(){
   running=false;paused=false;
+  releaseWakeLock();
   stopBinaurals();stopAmb();stopFlash();cancelAnimationFrame(animFrame);
   document.getElementById('orb').style.transform='scale(1)';
   document.getElementById('orb-count').textContent='—';
@@ -858,6 +917,7 @@ function togglePause(){
   paused=!paused;
   const icon=document.getElementById('pause-icon');
   if(paused){
+    releaseWakeLock();
     stopBinaurals();stopAmb();stopFlash();cancelAnimationFrame(animFrame);
     icon.className='ti ti-player-play';
     document.getElementById('status').textContent='Pausado';
@@ -865,6 +925,7 @@ function togglePause(){
     lastRaf=null;
     if(currentMode==='precriacao')applyPcPhase(pcPhaseIdx);
     else{startBinaurals();if(currentAmb!=='none')startAmb();if(flashActive)startFlash();}
+    requestWakeLock();
     icon.className='ti ti-player-pause';
     animateOrb();
   }
@@ -938,7 +999,7 @@ const VIZ_PHRASES=[
   {text:'Visualize com detalhes. Cores, lugares, cheiros, emoções.', dur:13000},
   {text:'Seu cérebro está gravando isso agora. Não force — deixe fluir.', dur:13000},
   {text:'Traga essa imagem para o centro da sua mente. Segure ela por um momento.', dur:14000},
-  {text:'Abra os olhos devagar. Agora desenhe o que você viu.', dur:10000},
+  {text:'Grave essa imagem. Ela já está dentro de você. Respire fundo e segure esse sentimento.', dur:14000},
 ];
 let vizIdx=0,vizTimer=null,vizTotal=0,vizElapsed=0,vizRaf=null,vizStart=0;
 
@@ -1005,15 +1066,55 @@ function animViz(){
   if(pct<100)vizRaf=requestAnimationFrame(animViz);
 }
 
+// Tela de silêncio ativo após visualização
+let silenceTimer=null;
+const SILENCE_DUR=3*60*1000; // 3 minutos de som de fundo para o mapa mental interno
+
 function endViz(){
+  clearTimeout(vizTimer);cancelAnimationFrame(vizRaf);
+  if(synth)synth.cancel();
+  // Não para o binaural — mantém Alfa suave durante o silêncio ativo
+  // Inicia som de floresta suave como fundo do mapa mental interno
+  startAmb('forest');
+  document.getElementById('viz-screen').classList.remove('show');
+  showSilenceScreen();
+}
+
+function showSilenceScreen(){
+  const scr=document.getElementById('silence-screen');
+  scr.classList.add('show');
+  let remaining=SILENCE_DUR/1000;
+  updateSilenceClock(remaining);
+  silenceTimer=setInterval(()=>{
+    remaining--;
+    updateSilenceClock(remaining);
+    if(remaining<=0){endSilence();}
+  },1000);
+}
+
+function updateSilenceClock(s){
+  const m=Math.floor(s/60);
+  const ss=s%60;
+  const el=document.getElementById('silence-countdown');
+  if(el)el.textContent=m+':'+(ss<10?'0':'')+ss;
+}
+
+function endSilence(){
+  clearInterval(silenceTimer);
+  stopBinaurals();stopAmb();
+  document.getElementById('silence-screen').classList.remove('show');
+  showTransition();
+}
+
+function skipSilence(){endSilence();}
+
+function skipViz(){
   clearTimeout(vizTimer);cancelAnimationFrame(vizRaf);
   if(synth)synth.cancel();
   stopBinaurals();
   document.getElementById('viz-screen').classList.remove('show');
   showTransition();
 }
-
-function skipViz(){endViz();}
 
 function showTransition(){
   document.getElementById('transition-screen').classList.add('show');
