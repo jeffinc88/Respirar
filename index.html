@@ -513,7 +513,7 @@
   <div class="sil-orb">✦</div>
   <div class="sil-title">Construa seu mapa<br>com os olhos fechados</div>
   <div class="sil-sub">O som continua. Deixe as imagens se organizarem naturalmente na sua mente.</div>
-  <div class="sil-clock" id="silence-countdown">3:00</div>
+  <div class="sil-clock" id="silence-countdown">2:00</div>
   <div class="sil-label">restantes</div>
   <button class="sil-skip" onclick="skipSilence()">Concluir agora</button>
 </div>
@@ -1006,8 +1006,9 @@ let vizIdx=0,vizTimer=null,vizTotal=0,vizElapsed=0,vizRaf=null,vizStart=0;
 function startViz(){
   vizTotal=VIZ_PHRASES.reduce((s,p)=>s+p.dur,0);
   vizIdx=0;vizElapsed=0;
-  // start low binaural alfa during viz
+  // Binaural Alfa + floresta desde o início da visualização
   startBinaurals(10);
+  startAmb('forest');
   beepVizStart();
   const scr=document.getElementById('viz-screen');
   scr.classList.add('show');
@@ -1068,14 +1069,12 @@ function animViz(){
 
 // Tela de silêncio ativo após visualização
 let silenceTimer=null;
-const SILENCE_DUR=3*60*1000; // 3 minutos de som de fundo para o mapa mental interno
+const SILENCE_DUR=2*60*1000; // 2 minutos de som de fundo para o mapa mental interno
 
 function endViz(){
   clearTimeout(vizTimer);cancelAnimationFrame(vizRaf);
   if(synth)synth.cancel();
-  // Não para o binaural — mantém Alfa suave durante o silêncio ativo
-  // Inicia som de floresta suave como fundo do mapa mental interno
-  startAmb('forest');
+  // Não para o binaural nem o ambiente — floresta já está tocando desde a visualização
   document.getElementById('viz-screen').classList.remove('show');
   showSilenceScreen();
 }
